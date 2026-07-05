@@ -1,0 +1,8 @@
+# Keep scripts LF so they run on macOS/Linux (CRLF breaks shebangs & bash).
+* text=auto eol=lf
+*.mjs text eol=lf
+*.sh  text eol=lf
+# Windows batch is happiest with CRLF.
+*.cmd text eol=crlf
+# Binary assets — never touch.
+*.png binary

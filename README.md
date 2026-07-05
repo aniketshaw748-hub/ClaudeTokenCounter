@@ -1,108 +1,160 @@
 # Claude Token Counter
 
-A usage meter for the **Claude Code** terminal — the same numbers the desktop
-app shows below its prompt box, rendered as a status-line row under your prompt
-in every session, automatically.
+**See your Claude usage right under the prompt — the same Session, Weekly and
+context numbers the desktop app shows, but in the [Claude Code](https://claude.com/claude-code)
+terminal, in every session, automatically.**
 
-Two layouts:
+![Claude Token Counter status line](ClaudeCounterSS.png)
+
+```
+Opus 4.8 (1M context)  │  Session 8% ▪──── 2h 50m  │  Weekly 83% ━━━━ 3d 8h  │  ctx 14%
+```
+
+- **Session** — how much of your rolling **5-hour** limit you've used, and when it resets
+- **Weekly** — how much of your **7-day** limit you've used, and when it resets
+- **ctx** — how full the current conversation's context window is
+
+Bars are thin and low-profile, coloured **blue** while healthy and escalating to
+**amber ≥ 75%** and **red ≥ 90%** so you notice before you hit a wall.
+
+---
+
+## Requirements
+
+- **[Claude Code](https://claude.com/claude-code)** (the CLI) — v2.1 or newer
+- **[Node.js](https://nodejs.org/)** 18+ — the only dependency, and Claude Code already needs it
+- A **Claude Pro or Max** plan — the Session/Weekly numbers come from your
+  subscription limits, which Claude Code only reports on paid plans. Without it
+  you still get the `ctx` meter. (See [Notes](#notes).)
+
+Works on **Windows, macOS, and Linux**.
+
+---
+
+## Install
+
+Clone it anywhere and run the installer once:
+
+```bash
+git clone https://github.com/aniketshaw748-hub/ClaudeTokenCounter.git
+cd ClaudeTokenCounter
+node install.mjs
+```
+
+Then **restart Claude Code** (or start a new session). That's it.
+
+<details>
+<summary><b>Prefer one click?</b></summary>
+
+- **Windows** — double-click **`install.cmd`**
+- **macOS / Linux** — run **`./install.sh`**
+
+Both just call `node install.mjs` for you.
+</details>
+
+<details>
+<summary><b>No git?</b> Download the ZIP instead</summary>
+
+Click **Code ▸ Download ZIP** on the GitHub page, unzip it anywhere, open a
+terminal in that folder, and run `node install.mjs` (or double-click
+`install.cmd` on Windows).
+</details>
+
+The installer:
+
+1. adds a `statusLine` entry to `~/.claude/settings.json` pointing at your copy
+   of `statusline.mjs` — **your existing settings are kept**, and a
+   `settings.json.bak` backup is written first;
+2. installs the **`/tokenbar`** slash command.
+
+It figures out the correct path automatically, so it works no matter where you
+put the folder.
+
+---
+
+## Switch layouts: compact ⇄ full
+
+Two layouts ship in the box:
 
 ```
 full     Opus 4.8  │  Session 5% ━─────────── 3h 35m  │  Weekly 83% ━━━━━━━━━━── 3d 9h  │  ctx 8%
 compact  S 5% ───── 3h35m   W 83% ━━━━─ 3d9h   ctx 8%
 ```
 
-- **Session** — usage of the rolling **5-hour** limit window + when it resets
-- **Weekly** — usage of the **7-day** limit window + when it resets
-- **ctx** — how full the current context window is
+Flip between them any time — the change shows on the next status-line refresh:
 
-Bars use thin horizontal lines (low height, minimal), blue while healthy,
-escalating to **amber ≥ 75%** and **red ≥ 90%**.
-
-## Switching layout
-
-The layout is chosen by the first of these that matches:
-
-1. `TOKENBAR_MODE` env var — `compact` or `full` (hard override)
-2. `~/.claude/tokenbar-mode` file — flipped by the commands below
-3. **auto** — terminal width via `$COLUMNS` (< 100 cols → compact), *if*
-   Claude Code exposes it to the script (most setups don't — see note)
-4. default → **full**
-
-Flip it any time (takes effect on the next status-line refresh):
-
-```
-/tokenbar                                                   # slash command: flip compact ⇄ full
-node C:/Coding/ClaudeTokenCounter/statusline.mjs toggle    # flip compact ⇄ full
-node C:/Coding/ClaudeTokenCounter/statusline.mjs compact   # pin compact
-node C:/Coding/ClaudeTokenCounter/statusline.mjs full       # pin full
-node C:/Coding/ClaudeTokenCounter/statusline.mjs auto       # clear pin
-```
-
-> **Why not a click button or true auto-resize?** A status line is just stdout
-> from a script — Claude Code sends it no click events, and it doesn't pass the
-> terminal width in. The script *can't* reliably see the width (stdin JSON has
-> none, `$COLUMNS` is unset in the spawned child, there's no TTY), so resize
-> auto-switching only works if a future Claude Code sets `$COLUMNS`. The
-> `toggle` command is the reliable switch.
-
-## How it works
-
-Claude Code pipes a JSON snapshot of the session to a status-line command on
-every render. `statusline.mjs` reads that JSON on stdin and prints one formatted
-row. The usage numbers come from these fields
-([schema](https://code.claude.com/docs/en/statusline.md)):
-
-| Field | Shown as |
+| How | Command |
 | --- | --- |
-| `rate_limits.five_hour.used_percentage` / `.resets_at` | Session % + countdown |
-| `rate_limits.seven_day.used_percentage` / `.resets_at` | Weekly % + countdown |
-| `context_window.used_percentage` | ctx % |
-| `cost.total_cost_usd` | $ cost |
+| **Slash command** (easiest) | type `/tokenbar` in Claude Code |
+| Terminal | `node statusline.mjs toggle` |
+| Pin one | `node statusline.mjs compact` &nbsp;/&nbsp; `node statusline.mjs full` |
+| Back to auto | `node statusline.mjs auto` |
+| Env override | set `TOKENBAR_MODE=compact` (or `full`) |
 
-> `rate_limits` is only sent for **Claude.ai Pro/Max** plans, and only **after
-> the first API response** of a session. Until then the row shows a "warming
-> up" hint plus context/cost. Each window can be independently absent.
+The layout is resolved in this order: `TOKENBAR_MODE` env var → the pin file
+(`~/.claude/tokenbar-mode`) → terminal width (if Claude Code exposes it) →
+default **full**.
 
-## Install
-
-Already wired into `~/.claude/settings.json` (global — applies to every project):
-
-```json
-"statusLine": {
-  "type": "command",
-  "command": "node C:/Coding/ClaudeTokenCounter/statusline.mjs",
-  "padding": 0,
-  "refreshInterval": 10
-}
-```
-
-`refreshInterval: 10` re-runs the script every 10s so the "resets in" countdown
-stays live even while the session is idle. On Windows, Claude Code runs the
-command through Git Bash (with `node` on PATH); the path uses forward slashes as
-Git Bash requires. **Restart Claude Code** (or start a new session) to pick it up.
-
-## Preview / develop
-
-No need to launch Claude Code to iterate — the test harness pipes sample
-payloads (typical, high-usage, fresh session, only-weekly, malformed) through
-the real script:
-
-```
-node test.mjs
-```
+---
 
 ## Customize
 
-Everything lives in `statusline.mjs`:
+Everything lives in one dependency-free file, `statusline.mjs`:
 
-- **Colours / thresholds** — `CLR` palette and `pctColor()` (the 75% / 90% cutoffs).
-- **Bar width** — the `width` argument to `bar()` (default 12 cells; uses 1/8-block partial fills for a smooth edge).
-- **Segments** — the `render()` function decides which parts show and in what order; drop `ctx`/`$` or reorder freely.
-- **No colour** — respects the `NO_COLOR` environment variable.
+- **Colours & thresholds** — the `CLR` palette and `pctColor()` (the 75% / 90% cutoffs)
+- **Bar width / style** — the `LAYOUTS` object (cell widths) and `bar()` (the `━`/`─` glyphs)
+- **What's shown & order** — the `render()` function; drop `ctx`, add cost, reorder freely
+- **No colour** — respects the `NO_COLOR` environment variable
+
+Preview your changes without launching Claude Code — the harness renders every
+layout against sample data:
+
+```bash
+node test.mjs
+```
+
+---
+
+## Uninstall
+
+```bash
+node install.mjs --uninstall
+```
+
+Removes the `statusLine` entry (keeping the rest of your settings) and the
+`/tokenbar` command, then restart Claude Code.
+
+---
 
 ## Notes
 
-- The row never crashes the status line: bad JSON or a render error prints a dim
-  one-line message instead of breaking your prompt.
-- These percentages are computed by Claude Code from **local** session activity
-  on this machine; they won't include usage from claude.ai or other devices.
+- **Where the numbers come from.** Claude Code passes live session data to the
+  status line on every render, including `rate_limits.five_hour` and
+  `rate_limits.seven_day`
+  ([schema](https://code.claude.com/docs/en/statusline.md)). This tool just
+  formats them — nothing is sent anywhere, and there are no API keys.
+- **"usage warms up after the first reply…"** — the Session/Weekly data only
+  arrives after Claude Code's first API response in a session, and only on
+  Pro/Max plans. Until then you'll see that hint plus the `ctx` meter; the bars
+  fill in on the first reply.
+- **Local numbers.** Like Claude Code's built-in `/usage`, these percentages
+  reflect activity on **this machine** — they won't include usage from claude.ai
+  or your other devices.
+
+---
+
+## Troubleshooting
+
+| Symptom | Fix |
+| --- | --- |
+| Nothing appears | Restart Claude Code / start a new session after installing. |
+| Only `ctx` shows, no Session/Weekly | You're not on Pro/Max, or it's before the first reply of the session. |
+| `token-counter: … not found` | Node isn't on your PATH — install it from [nodejs.org](https://nodejs.org/). |
+| `/tokenbar` not recognized | Slash commands load at startup — restart Claude Code once. |
+| Want your old settings back | Restore `~/.claude/settings.json.bak`. |
+
+---
+
+## License
+
+[MIT](LICENSE) © 2026
